@@ -1,4 +1,6 @@
 declare module 'scratch-vm' {
+    import {RuntimeCustomEvents, VirtualMachineCustomEvents} from 'scratch-vm/events';
+
     type Listener<Args extends unknown[]> = (...args: Args) => void;
 
     interface TypedEmitter<Events extends {[K in keyof Events]: unknown[]}> {
@@ -38,16 +40,6 @@ declare module 'scratch-vm' {
             toXML(): string;
         }
 
-        interface CommentChange {
-            text?: string;
-            x?: number;
-            y?: number;
-            width?: number;
-            height?: number;
-            minimized?: boolean;
-            blockId?: string | null;
-        }
-
         interface Frame {
             id: string;
             title: string;
@@ -60,10 +52,21 @@ declare module 'scratch-vm' {
             toXML(): string;
         }
 
+        interface StorageAssetType {
+            contentType: string;
+            name: string;
+            runtimeFormat: string;
+            immutable: boolean;
+        }
+
         interface StorageAsset {
+            assetType: StorageAssetType;
             assetId: string;
             dataFormat: string;
             data: Uint8Array;
+            clean: boolean;
+            decodeText(): string;
+            encodeDataURI(contentType?: string): string;
         }
 
         interface Costume {
@@ -138,13 +141,9 @@ declare module 'scratch-vm' {
             getScripts(): string[];
             getNextBlock(id: string): string | null;
             getTopLevelScript(id: string): string | null;
-            getOpcode(block: Block | undefined): string | null;
             createBlock(block: Block): void;
             changeBlock(args: BlockChange): void;
-            deleteBlock(blockId: string): void;
-            deleteAllBlocks(): void;
             duplicate(): Blocks;
-            blocklyListen(e: object): void;
             resetCache(): void;
             toXML(comments?: Record<string, Comment>): string;
             blockToXML(blockId: string, comments?: Record<string, Comment>): string | undefined;
@@ -172,17 +171,13 @@ declare module 'scratch-vm' {
             getName(): string;
             lookupVariableById(id: string): Variable | undefined;
             lookupVariableByNameAndType(name: string, type?: VariableType, skipStage?: boolean): Variable | null;
-            lookupOrCreateList(id: string, name: string): Variable;
             createVariable(id: string, name: string, type: VariableType, isCloud?: boolean): void;
             renameVariable(id: string, newName: string): void;
             deleteVariable(id: string): void;
             getAllVariableNamesInScopeByType(type?: VariableType, skipStage?: boolean): string[];
             createComment(id: string, blockId: string | null, text: string, x: number, y: number,
                 width: number, height: number, minimized?: boolean): void;
-            updateComment(id: string, change: CommentChange): boolean;
             deleteComment(id: string, blockId?: string | null): void;
-            createFrame(id: string | null, title: string, x: number, y: number, width: number, height: number,
-                collapsed: boolean, blocks: string[]): void;
         }
 
         type RotationStyle = 'all around' | 'left-right' | "don't rotate";
@@ -243,7 +238,7 @@ declare module 'scratch-vm' {
 
         interface RenderedTarget extends Target {
             sprite: Sprite;
-            renderer: Renderer | null;
+            renderer: Renderer | null | undefined;
             drawableID: number | null;
             dragging: boolean;
             isOriginal: boolean;
@@ -262,23 +257,17 @@ declare module 'scratch-vm' {
             videoState: string;
             textToSpeechLanguage: string | null;
             isSprite(): boolean;
-            setXY(x: number, y: number, force?: boolean | null): void;
-            setDirection(direction: number): void;
-            setDraggable(draggable: boolean): void;
             setVisible(visible: boolean): void;
             setSize(size: number): void;
-            setRotationStyle(rotationStyle: RotationStyle): void;
             setCostume(index: number): void;
             getCostumes(): Costume[];
-            getCurrentCostume(): Costume | undefined;
-            getCostumeIndexByName(costumeName: string): number;
             addCostume(costumeObject: Costume, index?: number): void;
-            renameCostume(costumeIndex: number, newName: string): void;
+            renameCostume(costumeIndex: number, newName: string): void | Promise<unknown>;
             deleteCostume(index: number): Costume | null;
             reorderCostume(costumeIndex: number, newIndex: number): boolean;
             getSounds(): Sound[];
             addSound(soundObject: Sound, index?: number): void;
-            renameSound(soundIndex: number, newName: string): void;
+            renameSound(soundIndex: number, newName: string): void | Promise<unknown>;
             deleteSound(index: number): Sound | null;
             reorderSound(soundIndex: number, newIndex: number): boolean;
             getBounds(): Bounds | null;
@@ -345,7 +334,11 @@ declare module 'scratch-vm' {
 
         type ExternalMonitorDelta = MonitorDelta | {toJS(): MonitorDelta} | Map<string, unknown>;
 
-        interface MonitorRecord {
+        interface MonitorRecord extends MonitorRecordFields {
+            get<K extends keyof MonitorRecordFields>(property: K): MonitorRecordFields[K];
+        }
+
+        interface MonitorRecordFields {
             id: string | null;
             spriteName: string | null;
             targetId: string | null;
@@ -531,7 +524,7 @@ declare module 'scratch-vm' {
             total: number | undefined;
         }
 
-        interface RuntimeEvents {
+        interface RuntimeEvents extends RuntimeCustomEvents {
             SCRIPT_GLOW_ON: [GlowData];
             SCRIPT_GLOW_OFF: [GlowData];
             BLOCK_GLOW_ON: [GlowData];
@@ -626,7 +619,7 @@ declare module 'scratch-vm' {
             };
         }
 
-        interface VirtualMachineEvents extends Pick<RuntimeEvents, ForwardedRuntimeEvent> {
+        interface VirtualMachineEvents extends Pick<RuntimeEvents, ForwardedRuntimeEvent>, VirtualMachineCustomEvents {
             ASSET_PROGRESS: [number, number];
             EXTENSION_FIELD_ADDED: [ExtensionField, undefined];
             PERIPHERAL_REQUEST_ERROR: [];
@@ -714,9 +707,7 @@ declare module 'scratch-vm' {
             isCoreExtension(extensionId: string): boolean;
             loadExtensionIdSync(extensionId: string): void;
             loadExtensionURL(extensionURL: string, extensionId?: string): Promise<void>;
-            removeExtension(extensionURL: string): boolean;
             setExtensionOrder(orderedExtensionIds: Iterable<string>): Promise<unknown>;
-            refreshBlocks(optExtensionId?: string): Promise<unknown>;
             getExtensionURLs(): Record<string, string>;
             getExtensionEntries(): ExtensionEntry[];
             getExtensionMode(id: string): ExtensionMode | null;
@@ -754,6 +745,9 @@ declare module 'scratch-vm' {
             handler: ((command: EditCommand) => unknown) | null;
             canLoadExtension: (url: string) => boolean | Promise<boolean>;
             loadingSnapshot?: boolean;
+            extensions: {
+                loadExtensionURL: ExtensionManager['loadExtensionURL'];
+            };
             request(method: string, args: unknown[], targetId?: string | null): unknown;
             snapshot(includeCode?: boolean, targetId?: string | null): EditTargetState[];
             applyState(target: RenderedTarget, state: Partial<EditTargetState>,
@@ -768,7 +762,14 @@ declare module 'scratch-vm' {
             format: string | null;
         }
 
-        interface FontManager extends TypedEmitter<{change: []}> {
+        interface InternalFont {
+            system: boolean;
+            family: string;
+            fallback: string;
+            asset?: StorageAsset;
+        }
+
+        interface FontManager extends TypedEmitter<{change: []}>, FontManagerInternals {
             runtime: Runtime;
             getFonts(): Font[];
             restrictFont(family: string): void;
@@ -814,7 +815,7 @@ declare module 'scratch-vm' {
         }
 
         interface Mouse extends MouseInternals {
-            usesRightClickDown?: boolean;
+            usesRightClickDown: boolean;
         }
 
         interface IoDevices {
@@ -848,9 +849,7 @@ declare module 'scratch-vm' {
             renderer?: Renderer;
             storage?: unknown;
             audioEngine?: unknown;
-            v2BitmapAdapter?: unknown;
             extensionStorage: Record<string, unknown>;
-            peripheralExtensions: Record<string, unknown>;
             cloudOptions: {limit: number};
             stageWidth: number;
             stageHeight: number;
@@ -872,13 +871,11 @@ declare module 'scratch-vm' {
             getEditingTarget(): RenderedTarget | null;
             setEditingTarget(editingTarget: RenderedTarget): void;
             getAllVarNamesOfType(varType: VariableType): string[];
-            getIsHat(opcode: string): boolean;
             getIsEdgeActivatedHat(opcode: string): boolean | undefined;
             getLabelForOpcode(extendedOpcode: string): {category: 'extension'; label: string} | undefined;
             getBlocksXML(target?: RenderedTarget | null): CategoryXML[];
             getBlocksJSON(): (Record<string, unknown> | undefined)[];
             getMonitorState(): MonitorState;
-            requestAddMonitor(monitor: MonitorDelta & {id: string}): void;
             requestUpdateMonitor(delta: ExternalMonitorDelta): boolean;
             startHats(requestedHatOpcode: string, optMatchFields?: Record<string, string> | null,
                 optTarget?: Target): Thread[] | undefined;
@@ -923,6 +920,10 @@ declare module 'scratch-vm' {
             _scripts: string[];
         }
 
+        interface FontManagerInternals {
+            fonts: InternalFont[];
+        }
+
         interface ExtensionManagerInternals {
             _loadedExtensions: Map<string, string>;
         }
@@ -947,11 +948,6 @@ declare module 'scratch-vm' {
 
         interface SerializationOptions {
             allowOptimization?: boolean;
-        }
-
-        interface FileDescription {
-            fileName: string;
-            fileContent: Uint8Array;
         }
 
         interface ExtensionUsage {
@@ -1019,7 +1015,19 @@ declare module 'scratch-vm' {
 
         type RestoreFunction = () => Promise<unknown>;
 
-        type ZipType = 'base64' | 'binarystring' | 'array' | 'uint8array' | 'arraybuffer' | 'blob' | 'nodebuffer';
+        interface ZipOutputs {
+            base64: string;
+            string: string;
+            text: string;
+            binarystring: string;
+            array: number[];
+            uint8array: Uint8Array;
+            arraybuffer: ArrayBuffer;
+            blob: Blob;
+            nodebuffer: Uint8Array;
+        }
+
+        type ZipType = keyof ZipOutputs;
     }
 
     class VirtualMachine implements TypedEmitter<VirtualMachine.VirtualMachineEvents>,
@@ -1028,7 +1036,7 @@ declare module 'scratch-vm' {
         runtime: VirtualMachine.Runtime;
         editingTarget: VirtualMachine.RenderedTarget | null;
         readonly renderer: VirtualMachine.Renderer | undefined;
-        readonly assets: unknown[];
+        readonly assets: VirtualMachine.StorageAsset[];
         extensionManager: VirtualMachine.ExtensionManager;
         securityManager: VirtualMachine.SecurityManager;
         editingCommands: VirtualMachine.EditingCommands;
@@ -1061,7 +1069,6 @@ declare module 'scratch-vm' {
         setRuntimeOptions(runtimeOptions: Partial<VirtualMachine.RuntimeOptions>): void;
         setCompilerOptions(compilerOptions: Partial<VirtualMachine.CompilerOptions>): void;
         setStageSize(width: number, height: number): void;
-        convertToPackagedRuntime(): void;
         addAddonBlock(options: VirtualMachine.AddonBlockOptions): void;
         getAddonBlock(procedureCode: string): VirtualMachine.AddonBlock | null;
         storeProjectOptions(extraOptions?: Record<string, unknown> | null): void;
@@ -1083,15 +1090,14 @@ declare module 'scratch-vm' {
         getPeripheralIsConnected(extensionId: string): boolean;
         loadProject(input: ArrayBuffer | ArrayBufferView | string | object,
             options?: VirtualMachine.LoadProjectOptions): Promise<void>;
-        saveProjectSb3(type?: VirtualMachine.ZipType, options?: VirtualMachine.SerializationOptions): Promise<unknown>;
+        saveProjectSb3<T extends VirtualMachine.ZipType = 'blob'>(type?: T, options?: VirtualMachine.SerializationOptions):
+            Promise<VirtualMachine.ZipOutputs[T]>;
         saveProjectSb3Stream(type?: VirtualMachine.ZipType, options?: VirtualMachine.SerializationOptions): unknown;
         saveProjectSb3DontZip(options?: VirtualMachine.SerializationOptions): Record<string, Uint8Array>;
-        serializeAssets(targetId?: string): VirtualMachine.FileDescription[];
-        exportSprite(targetId: string, optZipType?: VirtualMachine.ZipType): Promise<unknown>;
+        exportSprite<T extends VirtualMachine.ZipType = 'blob'>(targetId: string, optZipType?: T):
+            Promise<VirtualMachine.ZipOutputs[T]>;
         toJSON(optTargetId?: string | null, serializationOptions?: VirtualMachine.SerializationOptions): string;
         deserializeProject(projectJSON: object, zip: unknown, active?: () => boolean): Promise<void>;
-        installTargets(targets: VirtualMachine.RenderedTarget[], extensions: unknown, wholeProject: boolean,
-            layerOrder?: number[], active?: () => boolean): Promise<void>;
         addSprite(input: ArrayBuffer | ArrayBufferView | string | object): Promise<unknown>;
         addCostume(md5ext: string, costumeObject: object, optTargetId?: string | null,
             optVersion?: number | null): Promise<unknown>;
@@ -1103,16 +1109,16 @@ declare module 'scratch-vm' {
         duplicateSound(soundIndex: number): Promise<unknown>;
         renameSound(soundIndex: number, newName: string): void;
         getSoundBuffer(soundIndex: number): AudioBuffer | null;
-        updateSoundBuffer(soundIndex: number, newBuffer: AudioBuffer, soundEncoding?: ArrayBuffer | Uint8Array): void;
+        updateSoundBuffer(soundIndex: number, newBuffer: AudioBuffer, soundEncoding?: ArrayBuffer | Uint8Array): void | Promise<unknown>;
         deleteSound(soundIndex: number): VirtualMachine.RestoreFunction | Promise<never> | null;
         getCostume(costumeIndex: number): string | null;
         getExportedCostume(costumeObject: VirtualMachine.Costume): Uint8Array;
         getExportedCostumeBase64(costumeObject: VirtualMachine.Costume): string;
         updateBitmap(costumeIndex: number, bitmap: ImageData, rotationCenterX: number, rotationCenterY: number,
             bitmapResolution: number): Promise<unknown> | undefined;
-        updateSvg(costumeIndex: number, svg: string, rotationCenterX: number, rotationCenterY: number): void;
+        updateSvg(costumeIndex: number, svg: string, rotationCenterX: number, rotationCenterY: number): void | Promise<unknown>;
         addBackdrop(md5ext: string, backdropObject: object): Promise<unknown>;
-        renameSprite(targetId: string, newName: string): void;
+        renameSprite(targetId: string, newName: string): void | Promise<unknown>;
         renameVariable(variableId: string, newName: string): boolean;
         renameBroadcast(broadcastId: string, newName: string): boolean;
         deleteSprite(targetId: string): VirtualMachine.RestoreFunction;
@@ -1126,7 +1132,6 @@ declare module 'scratch-vm' {
         blockListener(e: object): void;
         flyoutBlockListener(e: object): void;
         monitorBlockListener(e: object): void;
-        variableListener(e: object): void;
         clearFlyoutBlocks(): void;
         setEditingTarget(targetId: string): void;
         exportStandaloneBlocks(blockObjects: VirtualMachine.Block[]): unknown;
@@ -1137,7 +1142,6 @@ declare module 'scratch-vm' {
         emitTargetsUpdate(triggerProjectChange?: boolean): void;
         emitWorkspaceUpdate(): void;
         getFractchContext(targetId?: string): VirtualMachine.FractchContext;
-        getFractchChangeKey(targetId: string): string | null;
         getCodeStateHash(targetId: string): string | null;
         replaceTargetScripts(targetId: string, change: unknown): unknown;
         getExtensionUsage(id: string): VirtualMachine.ExtensionUsage;
@@ -1148,7 +1152,7 @@ declare module 'scratch-vm' {
         reorderSound(targetId: string, soundIndex: number, newIndex: number): boolean | Promise<unknown>;
         startDrag(targetId: string): void;
         stopDrag(targetId: string): void;
-        postSpriteInfo(data: VirtualMachine.SpriteInfo): void;
+        postSpriteInfo(data: VirtualMachine.SpriteInfo): void | Promise<unknown>;
         setVariableValue(targetId: string, variableId: string, value: VirtualMachine.VariableValue):
             boolean | Promise<unknown>;
         getVariableValue(targetId: string, variableId: string): VirtualMachine.VariableValue | null;
@@ -1228,4 +1232,10 @@ declare module 'scratch-vm/src/engine/opcodes.generated.json' {
         opcodes: Record<string, OpcodeInfo>;
     };
     export = opcodeTable;
+}
+
+declare module 'scratch-vm/events' {
+    export interface RuntimeCustomEvents {}
+
+    export interface VirtualMachineCustomEvents {}
 }
