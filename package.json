@@ -1,0 +1,18 @@
+{
+  "name": "@mistwarp/types",
+  "version": "0.1.0",
+  "description": "TypeScript declarations for the MistWarp engine packages and the MistWarp API",
+  "license": "GPL-3.0",
+  "repository": "github:MistWarp/types",
+  "types": "index.d.ts",
+  "files": [
+    "index.d.ts",
+    "scratch-vm"
+  ],
+  "scripts": {
+    "check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
