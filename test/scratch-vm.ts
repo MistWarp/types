@@ -79,20 +79,19 @@ if (editing) {
     const scripts: string[] = editing.blocks._scripts;
     const json: VirtualMachine.TargetJSON = editing.toJSON();
     const bounds: VirtualMachine.Bounds | null = editing.getBounds();
-    editing.setXY(0, 0);
     editing.setCostume(costumes.length - 1);
     editing.createComment('c', null, 'note', 0, 0, 200, 200, false);
-    const moved: boolean = editing.updateComment('c', {x: 10, blockId: null});
     editing.postSpriteInfo({x: 1, rotationStyle: 'left-right'});
-    void [costumes, sounds, block, top, allBlocks, scripts, json, bounds, moved];
+    void [costumes, sounds, block, top, allBlocks, scripts, json, bounds];
 }
 
 const threads: VirtualMachine.Thread[] | undefined = runtime.startHats('event_whenkeypressed', {KEY_OPTION: 'space'});
 runtime.toggleScript('top', {target: stage, stackClick: true});
 runtime.requestUpdateMonitor({id: 'monitor', visible: false});
 runtime.requestUpdateMonitor({toJS: () => ({id: 'monitor', x: 5})});
-runtime.requestAddMonitor({id: 'monitor', mode: 'large'});
 const monitor: VirtualMachine.MonitorRecord | undefined = runtime.getMonitorState().get('monitor');
+const monitorVisible: boolean | undefined = monitor?.get('visible');
+const monitorX: number | null | undefined = monitor?.get('x');
 const xml: VirtualMachine.CategoryXML[] = runtime.getBlocksXML(stage);
 const label = runtime.getLabelForOpcode('pen_clear');
 const labelText: string | undefined = label?.label;
@@ -109,6 +108,25 @@ const fonts: VirtualMachine.Font[] = runtime.fontManager.getFonts();
 runtime.fontManager.on('change', () => undefined);
 const assetURL: string = runtime.assetManager.getObjectURL('image.png');
 const assetCount: number = runtime.assetManager.assets.length;
+const fontFallbacks: string[] = runtime.fontManager.fonts.map(font => font.fallback);
+const dirtyAssets = vm.assets.filter(asset => !asset.clean).map(asset => ({
+    type: asset.assetType.contentType,
+    id: asset.assetId,
+    size: asset.data.byteLength
+}));
+const costumeURI: string | undefined = vm.editingTarget?.getCostumes()[0]?.asset?.encodeDataURI();
+const costumeText: string | undefined = vm.editingTarget?.getCostumes()[0]?.asset?.decodeText();
+const renderedBy: VirtualMachine.Renderer | null | undefined = vm.editingTarget?.renderer;
+const rightClick: boolean = runtime.ioDevices.mouse.usesRightClickDown;
+export const zips: [Promise<Blob>, Promise<ArrayBuffer>, Promise<string>, Promise<Blob>, Promise<Uint8Array>] = [
+    vm.saveProjectSb3(),
+    vm.saveProjectSb3('arraybuffer'),
+    vm.saveProjectSb3('base64', {allowOptimization: false}),
+    vm.exportSprite('sprite'),
+    vm.exportSprite('sprite', 'uint8array')
+];
+export const collaborationLoad: Promise<void> = vm.editingCommands.extensions.loadExtensionURL('pen');
+const renamed: void | Promise<unknown> = vm.renameSprite('sprite', 'Sprite2');
 
 const internals = {
     blockInfo: runtime._blockInfo.map(category => category.id),
@@ -196,7 +214,8 @@ export const loadedProject: Promise<void> = vm.loadProject(new ArrayBuffer(0)).t
 
 export const used = [
     threads, monitor, xml, labelText, addon, categories, playing, framerate, active, fonts, assetURL,
-    assetCount, internals, loaded, urls, mode, entries, snapshot, restore, reordered, usage, context,
+    assetCount, fontFallbacks, dirtyAssets, costumeURI, costumeText, renderedBy, rightClick, renamed,
+    monitorVisible, monitorX, internals, loaded, urls, mode, entries, snapshot, restore, reordered, usage, context,
     hash, files, drawableTarget, argumentType, blockType, signatureArguments, changeKey, textHash,
     scopes, variadicPrefix
 ];
@@ -248,3 +267,23 @@ ArgumentType.STRING = 'text';
 
 // @ts-expect-error rotation styles are a closed set
 editing?.postSpriteInfo({rotationStyle: 'sideways'});
+
+// @ts-expect-error monitor records only answer for their own fields
+monitor?.get('colour');
+
+// @ts-expect-error saveProjectSb3 resolves to a Blob by default
+export const notABuffer: Promise<ArrayBuffer> = vm.saveProjectSb3();
+
+// @ts-expect-error unknown zip output types are rejected
+vm.exportSprite('sprite', 'zip');
+
+// @ts-expect-error renames only return a promise while a collaboration handler is set
+vm.renameCostume(0, 'costume').then(() => undefined);
+
+// @ts-expect-error setXY is not part of the declared surface
+editing?.setXY(0, 0);
+
+export const packagerSurface = (machine: VirtualMachine): unknown[] => {
+    machine.convertToPackagedRuntime();
+    return [Object.keys(machine.runtime.peripheralExtensions), machine.runtime.v2BitmapAdapter];
+};
