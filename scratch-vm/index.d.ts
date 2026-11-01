@@ -849,7 +849,9 @@ declare module 'scratch-vm' {
             renderer?: Renderer;
             storage?: unknown;
             audioEngine?: unknown;
+            v2BitmapAdapter?: unknown;
             extensionStorage: Record<string, unknown>;
+            peripheralExtensions: Record<string, unknown>;
             cloudOptions: {limit: number};
             stageWidth: number;
             stageHeight: number;
@@ -1069,6 +1071,7 @@ declare module 'scratch-vm' {
         setRuntimeOptions(runtimeOptions: Partial<VirtualMachine.RuntimeOptions>): void;
         setCompilerOptions(compilerOptions: Partial<VirtualMachine.CompilerOptions>): void;
         setStageSize(width: number, height: number): void;
+        convertToPackagedRuntime(): void;
         addAddonBlock(options: VirtualMachine.AddonBlockOptions): void;
         getAddonBlock(procedureCode: string): VirtualMachine.AddonBlock | null;
         storeProjectOptions(extraOptions?: Record<string, unknown> | null): void;

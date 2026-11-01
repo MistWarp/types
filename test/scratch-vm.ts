@@ -282,3 +282,8 @@ vm.renameCostume(0, 'costume').then(() => undefined);
 
 // @ts-expect-error setXY is not part of the declared surface
 editing?.setXY(0, 0);
+
+export const packagerSurface = (machine: VirtualMachine): unknown[] => {
+    machine.convertToPackagedRuntime();
+    return [Object.keys(machine.runtime.peripheralExtensions), machine.runtime.v2BitmapAdapter];
+};
